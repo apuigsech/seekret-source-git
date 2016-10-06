@@ -22,6 +22,7 @@ type SourceGitLoadOptions struct {
 	Commit bool
 	CommitCount int
 	Staged bool
+	CommitMessage: bool
 }
 
 func prepareGitLoadOptions(o seekret.LoadOptions) SourceGitLoadOptions {
@@ -29,6 +30,7 @@ func prepareGitLoadOptions(o seekret.LoadOptions) SourceGitLoadOptions {
 		Commit: true,
 		CommitCount: 0,
 		Staged: false,
+		CommitMessage: false,
 	}
 
 	if commit, ok := o["commit"].(bool); ok {
@@ -41,6 +43,10 @@ func prepareGitLoadOptions(o seekret.LoadOptions) SourceGitLoadOptions {
 
 	if staged, ok := o["staged"].(bool); ok {
 		opt.Staged = staged
+	}
+
+	if commitMessage, ok := o["commit-msg"].(bool); ok {
+		opt.CommitMessage = commitMessage
 	}
 
 	return opt
@@ -69,6 +75,10 @@ func (s *SourceGit) LoadObjects(source string, o seekret.LoadOptions) ([]models.
 			return nil,err
 		}
 		objectList = append(objectList, objectListStaged...)
+	}
+
+	if opt.CommitMessage {
+
 	}
 
 	return objectList, nil
@@ -171,6 +181,36 @@ func objectsFromStaged(repo *git.Repository) ([]models.Object, error) {
 
 	return objectList,nil
 }
+
+// Get the commit message from the current HEAD
+func getCommitMessage(repo *git.Repository, count int) ([]models.Object, error) {
+
+	var objectList []models.Object
+
+	index, err := repo.Index()
+	if err != nil {
+		return nil,err
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		return nil,err
+	}
+
+	ref := head.Target()
+
+	commit, err := repo.LookupCommit(ref)
+	if err != nil {
+		return nil,err
+	}
+
+	o := models.NewObject("COMMIT_EDITMSG", commit.Message())
+
+	objectList = append(objectList, *o)
+
+	return objectList,nil
+}
+
 
 
 func credentialsCallback(gitUri string, username string, allowedTypes git.CredType) (git.ErrorCode, *git.Cred) {
