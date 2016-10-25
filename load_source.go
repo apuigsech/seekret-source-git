@@ -2,7 +2,7 @@ package sourcegit
 
 import (
 	"fmt"
-	"github.com/havoc-io/ssh_config"
+	"github.com/emptyinterface/sshconfig"
 	"github.com/libgit2/git2go"
 	"io/ioutil"
 	"net/url"
