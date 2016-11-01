@@ -12,69 +12,88 @@ import (
 	"github.com/apuigsech/seekret/models"
 )
 
+
 var (
 	SourceTypeGit = &SourceGit{}
 )
 
+const (
+	Type = "seekret-source-git"
+)
+
 type SourceGit struct{}
 
+
 type SourceGitLoadOptions struct {
-	Commit bool
+	// commit-files: Include commited file content as object.
+	CommitFiles bool
+	// commit-messages: Include commit contect as object.
+	CommitMessages bool
+	// staged-files: Include stateg dile contect as object.
+	StagedFiles bool
+
+	// commit-count: Ammount of commits to analise.
 	CommitCount int
-	Staged bool
 }
 
 func prepareGitLoadOptions(o seekret.LoadOptions) SourceGitLoadOptions {
 	opt := SourceGitLoadOptions{
-		Commit: true,
+		CommitFiles: false,
+		CommitMessages: false,
+		StagedFiles: false,
+
 		CommitCount: 0,
-		Staged: false,
 	}
 
-	if commit, ok := o["commit"].(bool); ok {
-		opt.Commit = commit
+	if commit, ok := o["commit-files"].(bool); ok {
+		opt.CommitFiles = commit
+	}
+
+	if commitMessages, ok := o["commit-messages"].(bool); ok {
+		opt.CommitMessages = commitMessages
+	}
+
+	if stagedFiles, ok := o["staged-files"].(bool); ok {
+		opt.StagedFiles = stagedFiles
 	}
 
 	if commitCount, ok := o["commit-count"].(int); ok {
 		opt.CommitCount = commitCount
 	}
 
-	if staged, ok := o["staged"].(bool); ok {
-		opt.Staged = staged
-	}
-
 	return opt
 }
 
-func (s *SourceGit) LoadObjects(source string, o seekret.LoadOptions) ([]models.Object, error) {
+func (s *SourceGit) LoadObjects(source string, opta seekret.LoadOptions) ([]models.Object, error) {
 	var objectList []models.Object
-	opt := prepareGitLoadOptions(o)
+
+	opt := prepareGitLoadOptions(opta)
 
 	repo, err := openGitRepo(source)
 	if err != nil {
 		return nil, err
 	}
 
-	if opt.Commit {
-		objectListCommit,err := objectsFromCommit(repo, opt.CommitCount)
+	if opt.CommitFiles && opt.CommitMessages {
+		objectListCommit,err := objectsFromCommit(repo, opt.CommitFiles, opt.CommitMessages, opt.CommitCount)
 		if err != nil {
 			return nil,err
 		}
 		objectList = append(objectList, objectListCommit...)
 	}
 
-	if opt.Staged {
-		objectListStaged,err := objectsFromStaged(repo)
+	if opt.StagedFiles {
+		objectListStagedFiles,err := objectsFromStagedFiles(repo)
 		if err != nil {
 			return nil,err
 		}
-		objectList = append(objectList, objectListStaged...)
+		objectList = append(objectList, objectListStagedFiles...)
 	}
 
 	return objectList, nil
 }
 
-func objectsFromCommit(repo *git.Repository, count int) ([]models.Object, error) {
+func objectsFromCommit(repo *git.Repository, commitFiles bool, commitMessages bool, count int) ([]models.Object, error) {
 	var objectList []models.Object
 
 	walk, err := repo.Walk()
@@ -104,25 +123,34 @@ func objectsFromCommit(repo *git.Repository, count int) ([]models.Object, error)
 			fmt.Println(err)
 		}
 
-		// TODO: what to return?
-		tree.Walk(func(base string, tentry *git.TreeEntry) int {
-			if tentry.Type == git.ObjectBlob {
-				blob, err := repo.LookupBlob(tentry.Id)
-				if err != nil {
-					return 0
+		if commitMessages {
+			o := models.NewObject(fmt.Sprintf("commit-%s", commit.Id()), Type, "commit-message", []byte(commit.Message()))
+			o.SetMetadata("commit", commit.Id().String(), models.MetadataAttributes{})
+			objectList = append(objectList, *o)
+		}
+
+
+		if commitFiles {
+			// TODO: what to return?
+			tree.Walk(func(base string, tentry *git.TreeEntry) int {
+				if tentry.Type == git.ObjectBlob {
+					blob, err := repo.LookupBlob(tentry.Id)
+					if err != nil {
+						return 0
+					}	
+
+					o := models.NewObject(fmt.Sprintf("%s%s", base, tentry.Name), Type, "file-content", blob.Contents())
+
+					o.SetMetadata("commit", commit.Id().String(), models.MetadataAttributes{})
+					o.SetMetadata("uniq-id", tentry.Id.String(), models.MetadataAttributes{
+						PrimaryKey: true,
+					})
+					objectList = append(objectList, *o)
 				}
 
-				o := models.NewObject(fmt.Sprintf("%s%s", base, tentry.Name),  blob.Contents())
-
-				o.SetMetadata("commit", commit.Id().String(), models.MetadataAttributes{})
-				o.SetMetadata("uniq-id", tentry.Id.String(), models.MetadataAttributes{
-					PrimaryKey: true,
-				})
-				objectList = append(objectList, *o)
-			}
-
-			return 0
-		})
+				return 0
+			})
+		}
 
 		return true
 	})
@@ -135,7 +163,7 @@ func objectsFromCommit(repo *git.Repository, count int) ([]models.Object, error)
 }
 
 
-func objectsFromStaged(repo *git.Repository) ([]models.Object, error) {
+func objectsFromStagedFiles(repo *git.Repository) ([]models.Object, error) {
 	var objectList []models.Object
 
 	index, err := repo.Index()
@@ -161,7 +189,7 @@ func objectsFromStaged(repo *git.Repository) ([]models.Object, error) {
 				return nil,err
 			}
 
-			o := models.NewObject(entry.Path,  blob.Contents())
+			o := models.NewObject(entry.Path, Type, "file-content", blob.Contents())
 
 			// TODO: Type of staged.
 			o.SetMetadata("status", "staged", models.MetadataAttributes{})
