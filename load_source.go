@@ -209,7 +209,7 @@ func credentialsCallback(gitUri string, username string, allowedTypes git.CredTy
 		panic(err)
 	}
 
-	c, err := ssh_config.Parse(fh)
+	c, err := sshconfig.Parse(fh)
 	if err != nil {
 		panic(err)
 	}
