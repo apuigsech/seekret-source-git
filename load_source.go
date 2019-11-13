@@ -3,7 +3,7 @@ package sourcegit
 import (
 	"fmt"
 	"github.com/emptyinterface/sshconfig"
-	"github.com/libgit2/git2go"
+	"gopkg.in/libgit2/git2go.v26"
 	"io/ioutil"
 	"net/url"
 	"os"
